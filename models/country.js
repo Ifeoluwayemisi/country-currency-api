@@ -1,10 +1,18 @@
 import { DataTypes } from "sequelize";
+
 export default function (sequelize) {
   return sequelize.define(
     "Country",
     {
       id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-      name: { type: DataTypes.STRING, allowNull: false },
+      name: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true, // <-- this is enough
+        set(value) {
+          this.setDataValue("name", value.toLowerCase());
+        },
+      },
       capital: { type: DataTypes.STRING },
       region: { type: DataTypes.STRING },
       population: {
@@ -15,21 +23,11 @@ export default function (sequelize) {
       exchange_rate: { type: DataTypes.DOUBLE },
       estimated_gdp: { type: DataTypes.DOUBLE },
       flag_url: { type: DataTypes.STRING },
-      last_refreshed_at: { type: DataTypes.Date },
+      last_refreshed_at: { type: DataTypes.DATE },
     },
     {
       tableName: "countries",
-      timeStamp: true,
-      indexes: [
-        {
-          unique: true,
-          fields: [
-            sequelize.fn
-              ? sequelize.fn("lower", sequelize.col("name"))
-              : "name",
-          ],
-        },
-      ],
+      timestamps: true, // note: correct spelling!
     }
   );
 }

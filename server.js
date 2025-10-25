@@ -1,6 +1,6 @@
 import express from "express";
 import dotenv from "dotenv";
-import countryRoutes from "./routes/countryRoutes.js";
+import countryRoutes from "./routes/countries.js";
 import { sequelize } from "./models/index.js";
 
 dotenv.config();
