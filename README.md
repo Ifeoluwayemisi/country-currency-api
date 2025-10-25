@@ -1,4 +1,3 @@
-```markdown
 # Country Currency & Exchange Rate API
 
 A RESTful API that fetches and caches comprehensive country data, real-time exchange rates, and estimated GDP values in a MySQL database. The service exposes full CRUD operations, advanced filtering and sorting, and a generated summary visualization of the top countries by estimated GDP.
