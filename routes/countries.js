@@ -3,7 +3,7 @@ import axios from "axios";
 import fs from "fs/promises";
 import path from "path";
 import { sequelize, Country } from "../models/index.js";
-// import { createSummaryImage } from "../utils/image.js";
+import { createSummaryImage } from "../utils/image.js";
 
 const router = express.Router();
 
@@ -192,19 +192,6 @@ router.get("/", async (req, res) => {
   }
 });
 
-// GET /countries/:name
-router.get("/:name", async (req, res) => {
-  try {
-    const name = req.params.name;
-    const country = await findByNameCI(name);
-    if (!country) return res.status(404).json({ error: "Country not found" });
-    return res.json(country);
-  } catch (err) {
-    console.error("GET /countries/:name error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
 // DELETE /countries/:name
 router.delete("/:name", async (req, res) => {
   try {
@@ -234,5 +221,19 @@ router.get("/image", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+// GET /countries/:name
+router.get("/:name", async (req, res) => {
+  try {
+    const name = req.params.name;
+    const country = await findByNameCI(name);
+    if (!country) return res.status(404).json({ error: "Country not found" });
+    return res.json(country);
+  } catch (err) {
+    console.error("GET /countries/:name error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 
 export default router;
