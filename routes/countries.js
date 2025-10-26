@@ -37,6 +37,7 @@ router.post("/refresh", async (req, res) => {
   let countriesData, exchangeData;
 
   try {
+    console.log("🌍 REST_API =", REST_API);
     const [cResp, eResp] = await Promise.all([
       axios.get(REST_API || "https://restcountries.com/v2/all?fields=name,capital,region,population,flag,currencies", { timeout: 15000 }),
       axios.get(EXCHANGE_API || "https://open.er-api.com/v6/latest/USD", { timeout: 15000 }),
