@@ -26,11 +26,6 @@ async function findByNameCI(name) {
   });
 }
 
-if (!REST_API || !/^https?:\/\//.test(REST_API)) {
-  console.error("Invalid REST_API URL:", REST_API);
-  return res.status(500).json({ error: "Invalid REST_API configuration" });
-}
-
 /**
  * POST /countries/refresh
  * - Fetch countries and exchange rates (in parallel)
@@ -39,13 +34,29 @@ if (!REST_API || !/^https?:\/\//.test(REST_API)) {
  * - Create cache/summary.png with total + top5 + timestamp
  */
 router.post("/refresh", async (req, res) => {
-  let countriesData, exchangeData;
+  console.log("🚀 Refreshing countries...");
 
+  // Validate environment config
+  if (!REST_API || !/^https?:\/\//.test(REST_API)) {
+    console.error("Invalid REST_API:", REST_API);
+    return res.status(500).json({ error: "Invalid REST_API configuration" });
+  }
+
+  if (!EXCHANGE_API || !/^https?:\/\//.test(EXCHANGE_API)) {
+    console.error("Invalid EXCHANGE_API:", EXCHANGE_API);
+    return res
+      .status(500)
+      .json({ error: "Invalid EXCHANGE_API configuration" });
+  }
+
+  let countriesData, exchangeData;
   try {
-    console.log("🌍 REST_API =", REST_API);
     const [cResp, eResp] = await Promise.all([
-      axios.get(REST_API || "https://restcountries.com/v2/all?fields=name,capital,region,population,flag,currencies", { timeout: 15000 }),
-      axios.get(EXCHANGE_API || "https://open.er-api.com/v6/latest/USD", { timeout: 15000 }),
+      axios.get(
+        `${REST_API}?fields=name,capital,region,population,flag,currencies`,
+        { timeout: 15000 }
+      ),
+      axios.get(EXCHANGE_API, { timeout: 15000 }),
     ]);
 
     countriesData = cResp.data;
@@ -55,87 +66,102 @@ router.post("/refresh", async (req, res) => {
       throw new Error("Invalid exchange response");
     }
   } catch (err) {
-    console.error("External fetch failed:", err.message || err);
-    const source = err.config?.url ?? "external API";
+    console.error("🌐 External fetch failed:", err.message || err);
     return res.status(503).json({
       error: "External data source unavailable",
-      details: `Could not fetch data from ${source}`,
+      details: err.config?.url ?? "unknown external API",
     });
   }
 
   const rates = exchangeData.rates || {};
   const now = new Date();
+
   const transaction = await sequelize.transaction();
 
   try {
-    for (const c of countriesData) {
-      const name = c.name?.common || c.name || null;
-      const population = Number(c.population ?? 0);
+    // Process + normalize countries in-memory
+    const upsertPayloads = countriesData
+      .map((c) => {
+        const name = c.name?.common || c.name || null;
+        const population = Number(c.population ?? 0);
 
-      if (!name || !population || Number.isNaN(population) || population <= 0) {
-        console.warn(
-          `Skipping malformed country: ${JSON.stringify({ name, population })}`
-        );
-        continue;
-      }
-
-      const capital = Array.isArray(c.capital)
-        ? c.capital[0]
-        : c.capital || null;
-      const region = c.region || null;
-      const flag_url = c.flags?.png || c.flags?.svg || c.flag || null;
-
-      let currency_code = null;
-      if (Array.isArray(c.currencies)) {
-        currency_code = c.currencies[0]?.code || null;
-      } else if (typeof c.currencies === "object" && c.currencies !== null) {
-        currency_code = Object.keys(c.currencies)[0] || null;
-      }
-
-      let exchange_rate = null;
-      let estimated_gdp = null;
-
-      if (currency_code && rates[currency_code]) {
-        exchange_rate = Number(rates[currency_code]);
-        if (exchange_rate > 0) {
-          estimated_gdp = (population * randMultiplier()) / exchange_rate;
-        } else {
-          estimated_gdp = null;
+        if (!name || !population || isNaN(population) || population <= 0) {
+          console.warn(
+            `⚠️ Skipping malformed country: ${JSON.stringify({
+              name,
+              population,
+            })}`
+          );
+          return null;
         }
-      } else {
-        estimated_gdp = 0;
-      }
 
-      const payload = {
-        name,
-        capital,
-        region,
-        population,
-        currency_code,
-        exchange_rate,
-        estimated_gdp,
-        flag_url,
-        last_refreshed_at: now,
-      };
+        const capital = Array.isArray(c.capital)
+          ? c.capital[0]
+          : c.capital || null;
+        const region = c.region || null;
+        const flag_url = c.flags?.png || c.flags?.svg || c.flag || null;
 
-      const existing = await Country.findOne({
-        where: sequelize.where(
-          sequelize.fn("lower", sequelize.col("name")),
-          name.toLowerCase()
-        ),
-        transaction,
-      });
+        let currency_code = null;
+        if (Array.isArray(c.currencies)) {
+          currency_code = c.currencies[0]?.code || null;
+        } else if (typeof c.currencies === "object" && c.currencies !== null) {
+          currency_code = Object.keys(c.currencies)[0] || null;
+        }
 
-      if (existing) {
-        await existing.update(payload, { transaction });
-      } else {
-        await Country.create(payload, { transaction });
-      }
+        let exchange_rate = null;
+        let estimated_gdp = null;
+
+        if (currency_code && rates[currency_code]) {
+          exchange_rate = Number(rates[currency_code]);
+          estimated_gdp =
+            exchange_rate > 0
+              ? (population * randMultiplier()) / exchange_rate
+              : null;
+        } else {
+          estimated_gdp = 0;
+        }
+
+        return {
+          name,
+          capital,
+          region,
+          population,
+          currency_code,
+          exchange_rate,
+          estimated_gdp,
+          flag_url,
+          last_refreshed_at: now,
+        };
+      })
+      .filter(Boolean); // drop nulls
+
+    if (upsertPayloads.length === 0) {
+      console.warn("⚠️ No valid countries to insert/update");
+      await transaction.rollback();
+      return res.status(400).json({ error: "No valid country data found" });
     }
 
-    await transaction.commit(); // ✅ Only commit once everything is okay
+    // 💾 Bulk upsert
+    await Country.bulkCreate(upsertPayloads, {
+      updateOnDuplicate: [
+        "capital",
+        "region",
+        "population",
+        "currency_code",
+        "exchange_rate",
+        "estimated_gdp",
+        "flag_url",
+        "last_refreshed_at",
+      ],
+      transaction,
+    });
 
-    // Generate summary cache image
+    await transaction.commit();
+    console.log(
+      `✅ Database updated successfully with ${upsertPayloads.length} countries`
+    );
+
+    // 🖼️ Generate summary image
     await fs.mkdir(CACHE_DIR, { recursive: true });
 
     const total = await Country.count();
@@ -145,30 +171,31 @@ router.post("/refresh", async (req, res) => {
     });
 
     const outPath = path.join(CACHE_DIR, "summary.png");
+
     if (typeof createSummaryImage === "function") {
       await createSummaryImage({ total, top5, timestamp: now, outPath });
+      console.log("🖼️ Summary image created at:", outPath);
+    } else {
+      console.warn(
+        "⚠️ createSummaryImage() not available; skipping image generation"
+      );
     }
 
     return res.json({
       message: "Refresh successful",
+      total_countries: total,
       last_refreshed_at: now.toISOString(),
     });
   } catch (err) {
     console.error("Refresh failed:", err);
-
-    // Only rollback if the transaction hasn't finished
     if (!transaction.finished) {
-      try {
-        await transaction.rollback();
-        console.log("Transaction rolled back successfully");
-      } catch (rollbackErr) {
-        console.error("Rollback failed:", rollbackErr);
-      }
+      await transaction.rollback();
+      console.log("↩️ Transaction rolled back");
     }
-
     return res.status(500).json({ error: "Internal server error" });
   }
 });
+
 
 // GET /countries
 router.get("/", async (req, res) => {
@@ -240,6 +267,5 @@ router.get("/:name", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-
 
 export default router;
