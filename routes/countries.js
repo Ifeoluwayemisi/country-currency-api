@@ -26,6 +26,11 @@ async function findByNameCI(name) {
   });
 }
 
+if (!REST_API || !/^https?:\/\//.test(REST_API)) {
+  console.error("Invalid REST_API URL:", REST_API);
+  return res.status(500).json({ error: "Invalid REST_API configuration" });
+}
+
 /**
  * POST /countries/refresh
  * - Fetch countries and exchange rates (in parallel)
