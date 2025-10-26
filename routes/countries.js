@@ -38,8 +38,8 @@ router.post("/refresh", async (req, res) => {
 
   try {
     const [cResp, eResp] = await Promise.all([
-      axios.get(REST_API, { timeout: 15000 }),
-      axios.get(EXCHANGE_API, { timeout: 15000 }),
+      axios.get(REST_API || "https://restcountries.com/v2/all?fields=name,capital,region,population,flag,currencies", { timeout: 15000 }),
+      axios.get(EXCHANGE_API || "https://open.er-api.com/v6/latest/USD", { timeout: 15000 }),
     ]);
 
     countriesData = cResp.data;
