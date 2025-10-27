@@ -1,8 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import countryRoutes from "./routes/countries.js";
-import { sequelize, Country } from "./models/index.js"; // make sure Country model is exported
-
+import { sequelize, Country } from "./models/index.js"; 
 dotenv.config();
 
 const app = express();

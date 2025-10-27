@@ -8,7 +8,7 @@ export default function (sequelize) {
       name: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true, // <-- this is enough
+        unique: true, 
         set(value) {
           this.setDataValue("name", value.toLowerCase());
         },
@@ -27,7 +27,7 @@ export default function (sequelize) {
     },
     {
       tableName: "countries",
-      timestamps: true, // note: correct spelling!
+      timestamps: true,
     }
   );
 }

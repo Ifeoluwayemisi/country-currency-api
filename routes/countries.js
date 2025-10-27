@@ -173,7 +173,6 @@ router.post("/refresh", async (req, res) => {
   }
 });
 
-
 // GET /countries
 router.get("/", async (req, res) => {
   try {
@@ -244,6 +243,5 @@ router.get("/:name", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-
 
 export default router;
