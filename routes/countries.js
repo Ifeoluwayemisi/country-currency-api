@@ -49,7 +49,18 @@ router.post("/refresh", async (req, res) => {
       throw new Error("Invalid exchange response");
     }
   } catch (err) {
-    console.error("External fetch failed:", err.message || err);
+    // 💡 Enhanced debug logging to see what exactly went wrong
+    console.error(
+      "External fetch failed:",
+      err.message,
+      "| Code:",
+      err.code,
+      "| URL:",
+      err.config?.url,
+      "| Stack:",
+      err.stack?.split("\n")[0]
+    );
+
     const source = err.config?.url ?? "external API";
     return res.status(503).json({
       error: "External data source unavailable",
