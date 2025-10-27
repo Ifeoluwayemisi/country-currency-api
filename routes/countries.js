@@ -34,9 +34,19 @@ async function findByNameCI(name) {
  * - Create cache/summary.png with total + top5 + timestamp
  */
 router.post("/refresh", async (req, res) => {
+  if (!REST_API || !EXCHANGE_API) {
+    console.error("Environment variables missing:", { REST_API, EXCHANGE_API });
+    return res.status(500).json({
+      error: "Server misconfigured",
+      details: "RESTCOUNTRIES_API and/or EXCHANGE_API not set in environment",
+    });
+  }
+
   let countriesData, exchangeData;
 
   try {
+    console.log("DEBUG: Using REST API URL:", REST_API);
+    console.log("DEBUG: Using EXCHANGE API URL:", EXCHANGE_API);
     const [cResp, eResp] = await Promise.all([
       axios.get(REST_API, { timeout: 15000 }),
       axios.get(EXCHANGE_API, { timeout: 15000 }),
@@ -49,7 +59,6 @@ router.post("/refresh", async (req, res) => {
       throw new Error("Invalid exchange response");
     }
   } catch (err) {
-    // 💡 Enhanced debug logging to see what exactly went wrong
     console.error(
       "External fetch failed:",
       err.message,
@@ -102,11 +111,9 @@ router.post("/refresh", async (req, res) => {
 
       if (currency_code && rates[currency_code]) {
         exchange_rate = Number(rates[currency_code]);
-        if (exchange_rate > 0) {
+        if (exchange_rate > 0)
           estimated_gdp = (population * randMultiplier()) / exchange_rate;
-        } else {
-          estimated_gdp = null;
-        }
+        else estimated_gdp = null;
       } else {
         estimated_gdp = 0;
       }
@@ -131,28 +138,22 @@ router.post("/refresh", async (req, res) => {
         transaction,
       });
 
-      if (existing) {
-        await existing.update(payload, { transaction });
-      } else {
-        await Country.create(payload, { transaction });
-      }
+      if (existing) await existing.update(payload, { transaction });
+      else await Country.create(payload, { transaction });
     }
 
-    await transaction.commit(); // ✅ Only commit once everything is okay
+    await transaction.commit();
 
     // Generate summary cache image
     await fs.mkdir(CACHE_DIR, { recursive: true });
-
     const total = await Country.count();
     const top5 = await Country.findAll({
       order: [["estimated_gdp", "DESC"]],
       limit: 5,
     });
-
     const outPath = path.join(CACHE_DIR, "summary.png");
-    if (typeof createSummaryImage === "function") {
+    if (typeof createSummaryImage === "function")
       await createSummaryImage({ total, top5, timestamp: now, outPath });
-    }
 
     return res.json({
       message: "Refresh successful",
@@ -160,8 +161,6 @@ router.post("/refresh", async (req, res) => {
     });
   } catch (err) {
     console.error("Refresh failed:", err);
-
-    // Only rollback if the transaction hasn't finished
     if (!transaction.finished) {
       try {
         await transaction.rollback();
@@ -170,10 +169,10 @@ router.post("/refresh", async (req, res) => {
         console.error("Rollback failed:", rollbackErr);
       }
     }
-
     return res.status(500).json({ error: "Internal server error" });
   }
 });
+
 
 // GET /countries
 router.get("/", async (req, res) => {
